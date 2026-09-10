@@ -1,0 +1,408 @@
+{
+  "name": "My workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "formTitle": "AI CV Analyzer",
+        "formDescription": "Upload your CV and paste the Job Description to receive an AI-powered ATS analysis.",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Full Name",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Email",
+              "fieldType": "email",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "CV",
+              "fieldType": "file",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Job Description",
+              "fieldType": "textarea",
+              "requiredField": true
+            }
+          ]
+        },
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.6,
+      "position": [
+        0,
+        0
+      ],
+      "id": "72608539-5377-4e6a-a742-91aa2a51f06b",
+      "name": "AI CV Analyzer Form"
+    },
+    {
+      "parameters": {
+        "jsCode": "const rawText =\n  $json.text ||\n  $json.data ||\n  $json.content ||\n  '';\n\nconst cleanText = String(rawText)\n  .replace(/\\u0000/g, '')\n  .replace(/\\r/g, '\\n')\n  .replace(/[ \\t]+/g, ' ')\n  .replace(/\\n{3,}/g, '\\n\\n')\n  .trim();\n\nif (!cleanText || cleanText.length < 100) {\n  throw new Error(\n    'Could not extract enough text from the CV. Please upload a text-based PDF.'\n  );\n}\n\nif (cleanText.length > 60000) {\n  throw new Error(\n    'The CV is too large. Please upload a shorter CV.'\n  );\n}\n\nreturn [\n  {\n    json: {\n      cv_text: cleanText,\n      cv_character_count: cleanText.length,\n      full_name: $('AI CV Analyzer Form').item.json['Full Name'] || '',\n      email: $('AI CV Analyzer Form').item.json['Email'] || '',\n      job_description:\n        $('AI CV Analyzer Form').item.json['Job Description'] || ''\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        448,
+        0
+      ],
+      "id": "14713ae0-9981-4b0e-a607-cc6293e10fa8",
+      "name": "Clean CV Text"
+    },
+    {
+      "parameters": {
+        "operation": "pdf",
+        "binaryPropertyName": "CV",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1.1,
+      "position": [
+        224,
+        0
+      ],
+      "id": "c6abe7c6-c152-47fb-bef7-d5633a2f81d3",
+      "name": "Extract CV Text"
+    },
+    {
+      "parameters": {
+        "jsCode": "const cv = String($json.cv_text || '').trim();\nconst job = String($json.job_description || '').trim();\n\nif (cv.length < 100) {\n  throw new Error('CV content is empty or too short.');\n}\n\nif (job.length < 100) {\n  throw new Error(\n    'Job Description is too short. Please provide the complete job description.'\n  );\n}\n\nreturn [\n  {\n    json: {\n      ...$json,\n      cv_text: cv,\n      job_description: job\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        672,
+        0
+      ],
+      "id": "73562e69-80dd-4f56-bf01-c7e6ba6a06db",
+      "name": "Validate Input"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Analyze this CV and compare it with the Job Description.\n\nCandidate Name:\n{{ $json.full_name }}\n\nCV:\n{{ $json.cv_text }}\n\nJob Description:\n{{ $json.job_description }}",
+        "hasOutputParser": true,
+        "messages": {
+          "messageValues": [
+            {
+              "message": "=You are a senior ATS resume analyst, technical recruiter, HR specialist, and career advisor.  Your task is to perform a rigorous comparison between a candidate's CV and a specific Job Description.  You must evaluate ONLY information explicitly supported by the CV.  Never invent:  * Skills * Experience * Certifications * Education * Projects * Achievements * Years of experience  If something is not clearly stated in the CV, treat it as unavailable.  ============================== CANDIDATE INFORMATION =====================  Candidate Name: {{ $json.full_name }}  Candidate CV:  {{ $json.cv_text }}  ============================== JOB DESCRIPTION ===============  {{ $json.job_description }}  ============================== ANALYSIS TASK =============  Analyze the candidate in the following areas:  A. Candidate Summary  Write a concise professional summary of the candidate based only on the CV.  B. Technical Skills  Extract explicit technical skills such as:  * Programming languages * Frameworks * Databases * Cloud technologies * DevOps technologies * Cybersecurity tools * AI/ML technologies * Development tools * Platforms  Do not infer technologies that aren't explicitly mentioned.  C. Soft Skills  Extract soft skills only when clearly stated or strongly demonstrated by specific CV evidence.  D. Experience  Analyze professional experience.  Identify:  * Job titles * Companies * Responsibilities * Relevant achievements * Approximate relevant experience  Do not fabricate years of experience.  E. Education  Extract:  * Degrees * Majors * Universities * Graduation information  F. Certifications  Extract certifications explicitly mentioned in the CV.  G. Job Requirements  Analyze the Job Description and identify:  * Required technical skills * Preferred technical skills * Required experience * Education requirements * Certifications * Responsibilities * Important ATS keywords  Separate MUST-HAVE requirements from NICE-TO-HAVE requirements whenever possible.  H. Matched Skills  Determine which Job Description requirements are clearly supported by the CV.  I. Missing Skills  Determine which important Job Description skills are missing from the CV.  Do NOT recommend that the candidate falsely claim these skills.  J. Partially Matched Skills  Identify requirements for which the candidate has related knowledge but does not clearly satisfy the complete requirement.  K. Candidate Strengths  Identify the strongest reasons why this candidate could be considered for this position.  L. Candidate Gaps  Identify the most significant weaknesses compared with the Job Description.  M. ATS Keywords  Identify important ATS keywords from the Job Description.  Split them into:  1. Keywords already found in CV. 2. Missing keywords that should only be added if they truthfully represent the candidate's skills or experience.  N. CV Improvement Recommendations  Provide specific recommendations for tailoring this CV to this exact position.  Recommendations must be actionable.  Bad recommendation:  \"Improve the CV.\"  Good recommendation:  \"Move the Python and SQL projects into a Technical Projects section and mention the technologies in the first sentence of each project.\"  Never recommend lying or adding experience the candidate doesn't have.  ============================== MATCH SCORE ===========  Calculate a score from 0 to 100.  Use exactly this weighting:  Required Technical Skills = 35 points  Relevant Experience = 25 points  Responsibilities Alignment = 15 points  Education and Certifications = 10 points  ATS Keyword Alignment = 10 points  Preferred / Nice-to-Have Skills = 5 points  TOTAL = 100 points  Be conservative.  Do not give full points simply because similar words appear in the CV.  The candidate must demonstrate reasonable evidence.  Match Levels:  90-100: Excellent Match  80-89: Very Strong Match  70-79: Strong Match  60-69: Moderate Match  50-59: Weak Match  0-49: Poor Match  ============================== IMPORTANT RULES ===============  Never discriminate based on:  * Gender * Age * Race * Nationality * Religion * Disability * Marital status * Photos * Names or other protected characteristics  Do not use these factors when calculating the Match Score.  Evaluate only job-related qualifications.  Return the result using the connected Structured Output Parser.  All score components must mathematically add up to the final match score."
+            }
+          ]
+        },
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [
+        896,
+        0
+      ],
+      "id": "9416625b-fa4e-4325-ba83-838762596ef2",
+      "name": "AI CV Analyzer"
+    },
+    {
+      "parameters": {
+        "jsCode": "let raw = $json;\n\n// Try common AI output locations\nlet analysis =\n  raw.output ??\n  raw.result ??\n  raw.response ??\n  raw.data ??\n  raw;\n\n// If output is JSON text, convert it to an object\nif (typeof analysis === 'string') {\n  try {\n    analysis = JSON.parse(\n      analysis\n        .replace(/^```json\\s*/i, '')\n        .replace(/^```\\s*/i, '')\n        .replace(/```$/i, '')\n        .trim()\n    );\n  } catch (error) {\n    throw new Error(\n      'Could not parse AI output as JSON. Output: ' +\n      analysis.substring(0, 500)\n    );\n  }\n}\n\n// Sometimes Structured Output is nested again\nif (analysis.output && typeof analysis.output === 'object') {\n  analysis = analysis.output;\n}\n\nconst scores = analysis.score_breakdown || {};\n\nconst requiredSkills = Math.max(\n  0,\n  Math.min(35, Number(scores.required_skills || 0))\n);\n\nconst experience = Math.max(\n  0,\n  Math.min(25, Number(scores.experience || 0))\n);\n\nconst responsibilities = Math.max(\n  0,\n  Math.min(15, Number(scores.responsibilities || 0))\n);\n\nconst education = Math.max(\n  0,\n  Math.min(10, Number(scores.education_certifications || 0))\n);\n\nconst ats = Math.max(\n  0,\n  Math.min(10, Number(scores.ats_keywords || 0))\n);\n\nconst preferred = Math.max(\n  0,\n  Math.min(5, Number(scores.preferred_skills || 0))\n);\n\nconst calculatedScore = Math.round(\n  requiredSkills +\n  experience +\n  responsibilities +\n  education +\n  ats +\n  preferred\n);\n\nlet matchLevel;\n\nif (calculatedScore >= 90) {\n  matchLevel = 'Excellent Match';\n} else if (calculatedScore >= 80) {\n  matchLevel = 'Very Strong Match';\n} else if (calculatedScore >= 70) {\n  matchLevel = 'Strong Match';\n} else if (calculatedScore >= 60) {\n  matchLevel = 'Moderate Match';\n} else if (calculatedScore >= 50) {\n  matchLevel = 'Weak Match';\n} else {\n  matchLevel = 'Poor Match';\n}\n\nreturn [\n  {\n    json: {\n      candidate_name:\n        $('Validate Input').item.json.full_name || '',\n\n      candidate_email:\n        $('Validate Input').item.json.email || '',\n\n      job_description:\n        $('Validate Input').item.json.job_description || '',\n\n      candidate_summary:\n        analysis.candidate_summary || '',\n\n      technical_skills:\n        analysis.technical_skills || [],\n\n      soft_skills:\n        analysis.soft_skills || [],\n\n      experience:\n        analysis.experience || [],\n\n      education:\n        analysis.education || [],\n\n      certifications:\n        analysis.certifications || [],\n\n      required_skills:\n        analysis.required_skills || [],\n\n      preferred_skills:\n        analysis.preferred_skills || [],\n\n      matched_skills:\n        analysis.matched_skills || [],\n\n      partially_matched_skills:\n        analysis.partially_matched_skills || [],\n\n      missing_skills:\n        analysis.missing_skills || [],\n\n      strengths:\n        analysis.strengths || [],\n\n      gaps:\n        analysis.gaps || [],\n\n      ats_keywords_found:\n        analysis.ats_keywords_found || [],\n\n      ats_keywords_missing:\n        analysis.ats_keywords_missing || [],\n\n      recommendations:\n        analysis.recommendations || [],\n\n      score_breakdown: {\n        required_skills: requiredSkills,\n        experience,\n        responsibilities,\n        education_certifications: education,\n        ats_keywords: ats,\n        preferred_skills: preferred\n      },\n\n      match_score: calculatedScore,\n      match_level: matchLevel,\n\n      final_verdict:\n        analysis.final_verdict || '',\n\n      analyzed_at:\n        new Date().toISOString()\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1264,
+        0
+      ],
+      "id": "0adb1b2e-4d5f-451b-9ed8-0aa2c1d67bb1",
+      "name": "Validate AI Result"
+    },
+    {
+      "parameters": {
+        "tableId": "cv_analyses",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "candidate_name",
+              "fieldValue": "={{ $json.candidate_name }}"
+            },
+            {
+              "fieldId": "candidate_email",
+              "fieldValue": "={{ $json.candidate_email }}"
+            },
+            {
+              "fieldId": "job_description",
+              "fieldValue": "={{ $json.job_description }}"
+            },
+            {
+              "fieldId": "candidate_summary",
+              "fieldValue": "={{ $json.candidate_summary }}"
+            },
+            {
+              "fieldId": "technical_skills",
+              "fieldValue": "={{ JSON.stringify($json.technical_skills) }}"
+            },
+            {
+              "fieldId": "soft_skills",
+              "fieldValue": "={{ JSON.stringify($json.soft_skills) }}"
+            },
+            {
+              "fieldId": "experience",
+              "fieldValue": "={{ JSON.stringify($json.experience) }}"
+            },
+            {
+              "fieldId": "education",
+              "fieldValue": "={{ JSON.stringify($json.education) }}"
+            },
+            {
+              "fieldId": "certifications",
+              "fieldValue": "={{ JSON.stringify($json.certifications) }}"
+            },
+            {
+              "fieldId": "required_skills",
+              "fieldValue": "={{ JSON.stringify($json.required_skills) }}"
+            },
+            {
+              "fieldId": "preferred_skills",
+              "fieldValue": "={{ JSON.stringify($json.preferred_skills) }}"
+            },
+            {
+              "fieldId": "matched_skills",
+              "fieldValue": "={{ JSON.stringify($json.matched_skills) }}"
+            },
+            {
+              "fieldId": "partially_matched_skills",
+              "fieldValue": "={{ JSON.stringify($json.partially_matched_skills) }}"
+            },
+            {
+              "fieldId": "missing_skills",
+              "fieldValue": "={{ JSON.stringify($json.missing_skills) }}"
+            },
+            {
+              "fieldId": "strengths",
+              "fieldValue": "={{ JSON.stringify($json.strengths) }}"
+            },
+            {
+              "fieldId": "gaps",
+              "fieldValue": "={{ JSON.stringify($json.gaps) }}"
+            },
+            {
+              "fieldId": "ats_keywords_found",
+              "fieldValue": "={{ JSON.stringify($json.ats_keywords_found) }}"
+            },
+            {
+              "fieldId": "ats_keywords_missing",
+              "fieldValue": "={{ JSON.stringify($json.ats_keywords_missing) }}"
+            },
+            {
+              "fieldId": "recommendations",
+              "fieldValue": "={{ JSON.stringify($json.recommendations) }}"
+            },
+            {
+              "fieldId": "score_breakdown",
+              "fieldValue": "={{ JSON.stringify($json.score_breakdown) }}"
+            },
+            {
+              "fieldId": "match_score",
+              "fieldValue": "={{ $json.match_score }}"
+            },
+            {
+              "fieldId": "match_level",
+              "fieldValue": "={{ $json.match_level }}"
+            },
+            {
+              "fieldId": "final_verdict",
+              "fieldValue": "={{ $json.final_verdict }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1488,
+        0
+      ],
+      "id": "60afdde8-9221-420a-83d5-d942023f1fe5",
+      "name": "Save Analysis"
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $('Validate AI Result').item.json;\n\nconst escapeHtml = (value = '') =>\n  String(value)\n    .replace(/&/g, '&amp;')\n    .replace(/</g, '&lt;')\n    .replace(/>/g, '&gt;')\n    .replace(/\"/g, '&quot;')\n    .replace(/'/g, '&#039;');\n\nconst list = (items = [], type = 'normal') => {\n  if (!Array.isArray(items) || items.length === 0) {\n    return '<p class=\"empty\">None identified</p>';\n  }\n\n  return `\n    <ul class=\"${type}\">\n      ${items.map(item =>\n        `<li>${escapeHtml(item)}</li>`\n      ).join('')}\n    </ul>\n  `;\n};\n\nconst score = Number(data.match_score || 0);\n\nlet scoreClass = 'poor';\n\nif (score >= 80) {\n  scoreClass = 'excellent';\n} else if (score >= 70) {\n  scoreClass = 'good';\n} else if (score >= 60) {\n  scoreClass = 'medium';\n} else if (score >= 50) {\n  scoreClass = 'weak';\n}\n\nconst s = data.score_breakdown || {};\n\nconst html = `\n<!DOCTYPE html>\n<html lang=\"en\">\n\n<head>\n<meta charset=\"UTF-8\">\n\n<meta name=\"viewport\"\ncontent=\"width=device-width, initial-scale=1.0\">\n\n<title>AI CV Analysis</title>\n\n<style>\n\n* {\n    box-sizing: border-box;\n}\n\nbody {\n    margin: 0;\n    padding: 40px;\n    background: #f5f7fb;\n    font-family: Arial, Helvetica, sans-serif;\n    color: #182230;\n}\n\n.container {\n    max-width: 1000px;\n    margin: auto;\n}\n\n.header {\n    background: #ffffff;\n    border-radius: 18px;\n    padding: 35px;\n    margin-bottom: 20px;\n    box-shadow: 0 5px 25px rgba(0,0,0,.06);\n}\n\n.header h1 {\n    margin: 0 0 10px;\n    font-size: 32px;\n}\n\n.subtitle {\n    color: #667085;\n}\n\n.score-card {\n    margin-top: 25px;\n    padding: 30px;\n    text-align: center;\n    border-radius: 16px;\n    background: #101828;\n    color: white;\n}\n\n.score {\n    font-size: 64px;\n    font-weight: bold;\n}\n\n.score-label {\n    font-size: 20px;\n    margin-top: 5px;\n}\n\n.progress {\n    width: 100%;\n    height: 14px;\n    background: #344054;\n    border-radius: 20px;\n    margin-top: 20px;\n    overflow: hidden;\n}\n\n.progress div {\n    height: 100%;\n    width: ${score}%;\n    background: #ffffff;\n}\n\n.section {\n    background: white;\n    margin-bottom: 18px;\n    border-radius: 16px;\n    padding: 28px;\n    box-shadow: 0 5px 25px rgba(0,0,0,.05);\n}\n\n.section h2 {\n    margin-top: 0;\n    font-size: 21px;\n}\n\nul {\n    margin: 0;\n    padding-left: 22px;\n}\n\nli {\n    padding: 5px 0;\n    line-height: 1.5;\n}\n\n.grid {\n    display: grid;\n    grid-template-columns: 1fr 1fr;\n    gap: 18px;\n}\n\n.score-grid {\n    display: grid;\n    grid-template-columns: repeat(3,1fr);\n    gap: 12px;\n}\n\n.metric {\n    background: #f9fafb;\n    border-radius: 12px;\n    padding: 16px;\n}\n\n.metric-value {\n    font-weight: bold;\n    font-size: 22px;\n}\n\n.metric-name {\n    color: #667085;\n    font-size: 13px;\n    margin-top: 5px;\n}\n\n.tag {\n    display: inline-block;\n    background: #eef2ff;\n    padding: 7px 12px;\n    margin: 4px;\n    border-radius: 20px;\n    font-size: 13px;\n}\n\n.empty {\n    color: #98a2b3;\n}\n\n.footer {\n    text-align: center;\n    padding: 25px;\n    color: #98a2b3;\n    font-size: 12px;\n}\n\n@media(max-width:700px) {\n\n    body {\n        padding: 15px;\n    }\n\n    .grid {\n        grid-template-columns: 1fr;\n    }\n\n    .score-grid {\n        grid-template-columns: 1fr 1fr;\n    }\n\n}\n\n</style>\n</head>\n\n<body>\n\n<div class=\"container\">\n\n<div class=\"header\">\n\n<h1>AI CV Analysis</h1>\n\n<div class=\"subtitle\">\nCandidate:\n<strong>${escapeHtml(data.candidate_name || 'Candidate')}</strong>\n</div>\n\n<div class=\"score-card\">\n\n<div class=\"score\">\n${score}%\n</div>\n\n<div class=\"score-label\">\n${escapeHtml(data.match_level)}\n</div>\n\n<div class=\"progress\">\n<div></div>\n</div>\n\n</div>\n\n</div>\n\n<div class=\"section\">\n\n<h2>Candidate Summary</h2>\n\n<p>\n${escapeHtml(data.candidate_summary)}\n</p>\n\n</div>\n\n<div class=\"section\">\n\n<h2>Score Breakdown</h2>\n\n<div class=\"score-grid\">\n\n<div class=\"metric\">\n<div class=\"metric-value\">\n${s.required_skills || 0}/35\n</div>\n<div class=\"metric-name\">\nRequired Skills\n</div>\n</div>\n\n<div class=\"metric\">\n<div class=\"metric-value\">\n${s.experience || 0}/25\n</div>\n<div class=\"metric-name\">\nRelevant Experience\n</div>\n</div>\n\n<div class=\"metric\">\n<div class=\"metric-value\">\n${s.responsibilities || 0}/15\n</div>\n<div class=\"metric-name\">\nResponsibilities\n</div>\n</div>\n\n<div class=\"metric\">\n<div class=\"metric-value\">\n${s.education_certifications || 0}/10\n</div>\n<div class=\"metric-name\">\nEducation\n</div>\n</div>\n\n<div class=\"metric\">\n<div class=\"metric-value\">\n${s.ats_keywords || 0}/10\n</div>\n<div class=\"metric-name\">\nATS Keywords\n</div>\n</div>\n\n<div class=\"metric\">\n<div class=\"metric-value\">\n${s.preferred_skills || 0}/5\n</div>\n<div class=\"metric-name\">\nPreferred Skills\n</div>\n</div>\n\n</div>\n\n</div>\n\n<div class=\"grid\">\n\n<div class=\"section\">\n\n<h2>Matched Skills</h2>\n\n${list(data.matched_skills)}\n\n</div>\n\n<div class=\"section\">\n\n<h2>Missing Skills</h2>\n\n${list(data.missing_skills)}\n\n</div>\n\n</div>\n\n<div class=\"grid\">\n\n<div class=\"section\">\n\n<h2>Technical Skills</h2>\n\n${list(data.technical_skills)}\n\n</div>\n\n<div class=\"section\">\n\n<h2>Soft Skills</h2>\n\n${list(data.soft_skills)}\n\n</div>\n\n</div>\n\n<div class=\"section\">\n\n<h2>Partially Matched Skills</h2>\n\n${list(data.partially_matched_skills)}\n\n</div>\n\n<div class=\"grid\">\n\n<div class=\"section\">\n\n<h2>Strengths</h2>\n\n${list(data.strengths)}\n\n</div>\n\n<div class=\"section\">\n\n<h2>Gaps</h2>\n\n${list(data.gaps)}\n\n</div>\n\n</div>\n\n<div class=\"section\">\n\n<h2>ATS Keywords Already Found</h2>\n\n${(data.ats_keywords_found || []).map(\n  item => `<span class=\"tag\">${escapeHtml(item)}</span>`\n).join('')}\n\n</div>\n\n<div class=\"section\">\n\n<h2>Recommended ATS Keywords</h2>\n\n<p>\nOnly add these when they truthfully describe your experience.\n</p>\n\n${(data.ats_keywords_missing || []).map(\n  item => `<span class=\"tag\">${escapeHtml(item)}</span>`\n).join('')}\n\n</div>\n\n<div class=\"section\">\n\n<h2>CV Improvement Recommendations</h2>\n\n${list(data.recommendations)}\n\n</div>\n\n<div class=\"section\">\n\n<h2>Final Verdict</h2>\n\n<p>\n${escapeHtml(data.final_verdict)}\n</p>\n\n</div>\n\n<div class=\"footer\">\n\nGenerated by AI CV Analyzer<br>\n${escapeHtml(data.analyzed_at || '')}\n\n</div>\n\n</div>\n\n</body>\n</html>\n`;\n\nreturn [\n  {\n    json: {\n      html,\n      match_score: score,\n      match_level: data.match_level,\n      candidate_name: data.candidate_name\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1712,
+        0
+      ],
+      "id": "42f059e9-0b08-4bcb-934e-e26caf341213",
+      "name": "Build HTML Report"
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-3.1-flash-lite",
+        "options": {
+          "temperature": 0.1
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1.1,
+      "position": [
+        896,
+        208
+      ],
+      "id": "0bee1ae5-55cd-4e73-a6fb-44ee96e0c48e",
+      "name": "Google Gemini Chat Model"
+    },
+    {
+      "parameters": {
+        "operation": "completion",
+        "completionTitle": "AI CV Analysis Complete",
+        "completionMessage": "={{\n`\nMatch Score: ${$('Validate AI Result').item.json.match_score}%\n\nMatch Level:\n${$('Validate AI Result').item.json.match_level}\n\nCandidate:\n${$('Validate AI Result').item.json.candidate_name}\n\nMatched Skills:\n${($('Validate AI Result').item.json.matched_skills || []).map(x => '✓ ' + x).join('\\n')}\n\nMissing Skills:\n${($('Validate AI Result').item.json.missing_skills || []).map(x => '✕ ' + x).join('\\n')}\n\nStrengths:\n${($('Validate AI Result').item.json.strengths || []).map(x => '✓ ' + x).join('\\n')}\n\nRecommendations:\n${($('Validate AI Result').item.json.recommendations || []).map((x,i) => `${i+1}. ${x}`).join('\\n')}\n`\n}}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.form",
+      "typeVersion": 2.5,
+      "position": [
+        1936,
+        0
+      ],
+      "id": "610af48c-ded0-48ca-b45a-720b4fe28c06",
+      "name": "Show Analysis Result"
+    },
+    {
+      "parameters": {
+        "jsonSchemaExample": "{\n  \"candidate_summary\": \"Computer Science candidate with backend development experience.\",\n  \"technical_skills\": [\n    \"Python\",\n    \"JavaScript\",\n    \"SQL\"\n  ],\n  \"soft_skills\": [\n    \"Problem Solving\",\n    \"Teamwork\"\n  ],\n  \"experience\": [\n    \"Web Development Intern\"\n  ],\n  \"education\": [\n    \"Bachelor of Science in Computer Science\"\n  ],\n  \"certifications\": [\n    \"Python Essentials\"\n  ],\n  \"required_skills\": [\n    \"Python\",\n    \"SQL\",\n    \"REST APIs\"\n  ],\n  \"preferred_skills\": [\n    \"Docker\",\n    \"AWS\"\n  ],\n  \"matched_skills\": [\n    \"Python\",\n    \"SQL\",\n    \"REST APIs\"\n  ],\n  \"partially_matched_skills\": [\n    \"PostgreSQL\"\n  ],\n  \"missing_skills\": [\n    \"Docker\",\n    \"AWS\"\n  ],\n  \"strengths\": [\n    \"Strong programming foundation\"\n  ],\n  \"gaps\": [\n    \"Limited cloud experience\"\n  ],\n  \"ats_keywords_found\": [\n    \"Python\",\n    \"SQL\"\n  ],\n  \"ats_keywords_missing\": [\n    \"Docker\",\n    \"AWS\"\n  ],\n  \"recommendations\": [\n    \"Highlight backend projects\",\n    \"Add measurable achievements\"\n  ],\n  \"score_breakdown\": {\n    \"required_skills\": 28,\n    \"experience\": 18,\n    \"responsibilities\": 12,\n    \"education_certifications\": 8,\n    \"ats_keywords\": 7,\n    \"preferred_skills\": 2\n  },\n  \"match_score\": 75,\n  \"match_level\": \"Strong Match\",\n  \"final_verdict\": \"The candidate is a good match but has gaps in cloud and DevOps technologies.\"\n}"
+      },
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        1040,
+        208
+      ],
+      "id": "39299845-04d3-43df-9f9f-bab5c752e68d",
+      "name": "Structured Output Parser"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "AI CV Analyzer Form": {
+      "main": [
+        [
+          {
+            "node": "Extract CV Text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract CV Text": {
+      "main": [
+        [
+          {
+            "node": "Clean CV Text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clean CV Text": {
+      "main": [
+        [
+          {
+            "node": "Validate Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Input": {
+      "main": [
+        [
+          {
+            "node": "AI CV Analyzer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI CV Analyzer": {
+      "main": [
+        [
+          {
+            "node": "Validate AI Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate AI Result": {
+      "main": [
+        [
+          {
+            "node": "Save Analysis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Analysis": {
+      "main": [
+        [
+          {
+            "node": "Build HTML Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI CV Analyzer",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build HTML Report": {
+      "main": [
+        [
+          {
+            "node": "Show Analysis Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Structured Output Parser": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "AI CV Analyzer",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "nodeGroups": [],
+  "tags": []
+}
